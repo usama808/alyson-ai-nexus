@@ -1,0 +1,363 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model City {
+  id         Int      @id @default(autoincrement())
+  name       String
+  state      String
+  slug       String   @unique
+  subdomain  String
+  population Int
+  status     String   @default("active")
+
+  articles       Article[]
+  socialPosts    SocialPostRaw[]
+  subscribers    Subscriber[]
+  emailCampaigns EmailCampaign[]
+  cityMetrics    CityMetric?
+  events         Event[]
+  homepageSlots  HomepageSlot[]
+  systemJobs     SystemJob[]
+
+  @@map("cities")
+}
+
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String
+  slug String @unique
+
+  articles Article[]
+
+  @@map("categories")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  role         String
+  status       String   @default("active")
+  passwordHash String   @map("password_hash")
+
+  refreshTokens  RefreshToken[]
+  reviewQueue    ReviewQueue[]
+  events         Event[]
+  articleVersions ArticleVersion[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Article {
+  id          Int       @id @default(autoincrement())
+  cityId      Int       @map("city_id")
+  categoryId  Int       @map("category_id")
+  title       String
+  slug        String
+  status      String    @default("draft")
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  city            City             @relation(fields: [cityId], references: [id])
+  category        Category         @relation(fields: [categoryId], references: [id])
+  content         ArticleContent?
+  sources         ArticleSource[]
+  aiGenerations   AiGeneration[]
+  reviewQueue     ReviewQueue?
+  rankingScore    RankingScore?
+  metrics         ArticleMetric?
+  events          Event[]
+  homepageSlots   HomepageSlot[]
+  versions        ArticleVersion[]
+
+  @@unique([cityId, slug])
+  @@index([cityId, status])
+  @@index([status])
+  @@map("articles")
+}
+
+model ArticleContent {
+  articleId        Int    @id @map("article_id")
+  content          String
+  seoDescription   String? @map("seo_description")
+  newsletterHtml   String? @map("newsletter_html")
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("article_content")
+}
+
+model ArticleVersion {
+  id              Int      @id @default(autoincrement())
+  articleId       Int      @map("article_id")
+  versionNumber   Int      @map("version_number")
+  content         String
+  seoDescription  String?  @map("seo_description")
+  changeType      String   @map("change_type")
+  userId          Int?     @map("user_id")
+  aiGenerationId  Int?     @map("ai_generation_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  article      Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id])
+  aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id])
+
+  @@index([articleId])
+  @@map("article_versions")
+}
+
+model ArticleSource {
+  id             Int      @id @default(autoincrement())
+  articleId      Int      @map("article_id")
+  platform       String
+  sourceUrl      String   @map("source_url")
+  originalAuthor String?  @map("original_author")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("article_sources")
+}
+
+model SocialPostRaw {
+  id        Int      @id @default(autoincrement())
+  platform  String
+  cityId    Int      @map("city_id")
+  postText  String   @map("post_text")
+  likes     Int      @default(0)
+  comments  Int      @default(0)
+  shares    Int      @default(0)
+  postUrl   String   @map("post_url")
+  scrapedAt DateTime @map("scraped_at")
+
+  city City @relation(fields: [cityId], references: [id])
+
+  @@index([cityId, platform])
+  @@map("social_posts_raw")
+}
+
+model AiGeneration {
+  id               Int      @id @default(autoincrement())
+  articleId        Int      @map("article_id")
+  model            String
+  provider         String
+  generationType   String   @map("generation_type")
+  confidenceScore  Float    @map("confidence_score")
+  outputType       String   @map("output_type")
+  outputContent    String?  @map("output_content")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  article  Article          @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  versions ArticleVersion[]
+
+  @@index([articleId])
+  @@map("ai_generations")
+}
+
+model ReviewQueue {
+  id           Int       @id @default(autoincrement())
+  articleId    Int       @unique @map("article_id")
+  status       String    @default("pending")
+  reviewerName String?   @map("reviewer_name")
+  reviewerId   Int?      @map("reviewer_id")
+  notes        String?
+  approvedAt   DateTime? @map("approved_at")
+
+  article  Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation(fields: [reviewerId], references: [id])
+
+  @@map("review_queue")
+}
+
+model RankingScore {
+  articleId          Int      @id @map("article_id")
+  score              Float
+  ctrWeight          Float    @map("ctr_weight")
+  revenueWeight      Float    @map("revenue_weight")
+  engagementWeight   Float    @map("engagement_weight")
+  updatedAt          DateTime @map("updated_at")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("ranking_scores")
+}
+
+model ArticleMetric {
+  articleId          Int      @id @map("article_id")
+  views              Int      @default(0)
+  clicks             Int      @default(0)
+  ctr                Float    @default(0)
+  engagement         Float    @default(0)
+  bounceRate         String?  @map("bounce_rate")
+  avgTimeOnPage      String?  @map("avg_time_on_page")
+  emailClicks        Int      @default(0) @map("email_clicks")
+  socialShares       Int      @default(0) @map("social_shares")
+  homepageFeatured   Boolean  @default(false) @map("homepage_featured")
+  updatedAt          DateTime @map("updated_at")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("article_metrics")
+}
+
+model CityMetric {
+  cityId            Int      @id @map("city_id")
+  views             Int      @default(0)
+  clicks            Int      @default(0)
+  avgCtr            Float    @map("avg_ctr")
+  revenue           Float    @default(0)
+  subscriberCount   Int      @default(0) @map("subscriber_count")
+  totalArticles     Int      @default(0) @map("total_articles")
+  pendingReviews    Int      @default(0) @map("pending_reviews")
+  topCategory       String?  @map("top_category")
+  emailOpenRate     String?  @map("email_open_rate")
+  subscriberGrowth  String?  @map("subscriber_growth")
+  updatedAt         DateTime @map("updated_at")
+
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@map("city_metrics")
+}
+
+model HomepageSlot {
+  id              Int      @id @default(autoincrement())
+  cityId          Int      @map("city_id")
+  articleId       Int      @map("article_id")
+  position        Int
+  manualOverride  Boolean  @default(false) @map("manual_override")
+  headlineVariant String?  @map("headline_variant")
+  active          Boolean  @default(true)
+  updatedAt       DateTime @map("updated_at")
+
+  city    City    @relation(fields: [cityId], references: [id])
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([cityId, position])
+  @@index([cityId, active])
+  @@map("homepage_slots")
+}
+
+model Event {
+  id        Int      @id @default(autoincrement())
+  eventType String   @map("event_type")
+  articleId Int?     @map("article_id")
+  cityId    Int?     @map("city_id")
+  userId    Int?     @map("user_id")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  article Article? @relation(fields: [articleId], references: [id])
+  city    City?    @relation(fields: [cityId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+
+  @@index([eventType, createdAt])
+  @@index([cityId, createdAt])
+  @@index([articleId, createdAt])
+  @@map("events")
+}
+
+model Subscriber {
+  id        Int      @id @default(autoincrement())
+  cityId    Int      @map("city_id")
+  email     String
+  status    String   @default("active")
+  source    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  city City @relation(fields: [cityId], references: [id])
+
+  @@unique([cityId, email])
+  @@index([cityId, status])
+  @@map("subscribers")
+}
+
+model EmailCampaign {
+  id           Int      @id @default(autoincrement())
+  cityId       Int      @map("city_id")
+  title        String
+  campaignType String   @map("campaign_type")
+  status       String   @default("draft")
+  scheduledAt  DateTime? @map("scheduled_at")
+  sentCount    Int      @default(0) @map("sent_count")
+  openRate     Float    @default(0) @map("open_rate")
+  clickRate    Float    @default(0) @map("click_rate")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  city City @relation(fields: [cityId], references: [id])
+
+  @@index([cityId])
+  @@map("email_campaigns")
+}
+
+model Integration {
+  id         Int       @id @default(autoincrement())
+  name       String
+  provider   String
+  status     String    @default("disconnected")
+  lastSyncAt DateTime? @map("last_sync_at")
+
+  credentials IntegrationCredential?
+
+  @@map("integrations")
+}
+
+model IntegrationCredential {
+  id              Int    @id @default(autoincrement())
+  integrationId   Int    @unique @map("integration_id")
+  encryptedSecret String @map("encrypted_secret")
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_credentials")
+}
+
+model SystemJob {
+  id           Int       @id @default(autoincrement())
+  jobType      String    @map("job_type")
+  queueName    String    @map("queue_name")
+  status       String    @default("pending")
+  payload      Json?
+  result       Json?
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(3) @map("max_attempts")
+  errorMessage String?   @map("error_message")
+  cityId       Int?      @map("city_id")
+  articleId    Int?      @map("article_id")
+  bullJobId    String?   @map("bull_job_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+
+  city City? @relation(fields: [cityId], references: [id])
+
+  @@index([status, jobType])
+  @@index([queueName])
+  @@map("system_jobs")
+}
+
+model Setting {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}

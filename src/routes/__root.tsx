@@ -111,12 +111,16 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 import { Sidebar } from "@/components/Sidebar";
+import { LiveFeedBootstrap } from "@/components/LiveFeedBootstrap";
+import { AuthBootstrap } from "@/components/AuthBootstrap";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <LiveFeedBootstrap />
+      <AuthBootstrap />
       <div className="min-h-screen bg-background">
         <Sidebar />
         <main className="md:pl-60">

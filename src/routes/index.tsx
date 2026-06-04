@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   Globe2, FileText, MousePointerClick, Percent, DollarSign, Users, ShieldAlert, Sparkles,
@@ -6,7 +7,15 @@ import {
 } from "lucide-react";
 import { PageShell, SectionCard, Badge } from "@/components/PageShell";
 import { MetricCard } from "@/components/MetricCard";
-import { articles, cities, pipelineStages, sourcePlatforms, sparkline, trafficSeries } from "@/lib/mock-data";
+import { pipelineStages as mockPipelineStages, sparkline, articles as mockArticles, cities as mockCities } from "@/lib/mock-data";
+import { MOCK_SOURCE_PLATFORMS, connectedSourcesForChart } from "@/lib/news-sources";
+import { useLivePipeline } from "@/hooks/use-live-pipeline";
+import { buildTrafficSeries, trafficRangeLabel, type TrafficRange } from "@/lib/traffic-data";
+import { useLiveArticles, useLiveCities } from "@/hooks/use-live-feed";
+import { isLiveApiEnabled } from "@/lib/api-client";
+import { formatStateName } from "@/lib/us-states";
+import { RefreshFeedButton } from "@/components/RefreshFeedButton";
+import type { LiveArticle } from "@/lib/types";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -16,11 +25,48 @@ const badgeTone: Record<string, "primary" | "destructive" | "success" | "brand">
   Trending: "primary", Viral: "destructive", Breaking: "destructive", "High Revenue": "success",
 };
 
+const TRAFFIC_RANGES: TrafficRange[] = ["7d", "30d", "90d"];
+
 function Dashboard() {
-  const top = [...articles].sort((a, b) => b.engagement - a.engagement).slice(0, 5);
+  const [trafficRange, setTrafficRange] = useState<TrafficRange>("30d");
+  const trafficSeries = useMemo(() => buildTrafficSeries(trafficRange), [trafficRange]);
+
+  const live = isLiveApiEnabled();
+  const { data: pipelineData } = useLivePipeline();
+  const pipelineStages = live ? (pipelineData?.pipelineStages ?? mockPipelineStages) : mockPipelineStages;
+  const allSourcePlatforms = live ? (pipelineData?.sourcePlatforms ?? MOCK_SOURCE_PLATFORMS) : MOCK_SOURCE_PLATFORMS;
+  const sourcePlatformsChart = connectedSourcesForChart(allSourcePlatforms);
+  const pipelineHealthy = allSourcePlatforms.some(
+    (p) => p.connection === "connected" && p.status === "healthy",
+  );
+
+  const { data: articleRes, isLoading: articlesLoading, isError: articlesError } = useLiveArticles({
+    limit: 50,
+    sortBy: "createdAt",
+  });
+  const { data: cityRes, isLoading: citiesLoading } = useLiveCities();
+
+  const articles: LiveArticle[] = live ? (articleRes?.articles ?? []) : mockArticles;
+  const cities = live ? (cityRes?.cities ?? []) : mockCities;
+  const top = [...articles].sort((a, b) => b.engagement - a.engagement || b.clicks - a.clicks).slice(0, 5);
+
+  const subtitle = live
+    ? articlesLoading
+      ? "Loading live articles from city feeds…"
+      : `${articles.length} articles across ${cities.length} cities · Reddit & Google News`
+    : "Realtime overview across 50 city networks (demo data)";
 
   return (
-    <PageShell title="Alyson Intelligence Dashboard" subtitle="Realtime overview across 50 city networks">
+    <PageShell
+      title="Alyson Intelligence Dashboard"
+      subtitle={subtitle}
+      actions={live ? <RefreshFeedButton /> : undefined}
+    >
+      {live && articlesError && (
+        <p className="mb-4 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+          Could not load live articles. Is the API running on port 4000?
+        </p>
+      )}
       {/* Metrics grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard label="Total Websites" value="50" delta={4.0} data={sparkline(1)} icon={Globe2} />
@@ -38,11 +84,22 @@ function Dashboard() {
         <SectionCard
           className="xl:col-span-2"
           title="Network Traffic"
-          description="Clicks and revenue across all city sites — last 30 days"
+          description={`Clicks and revenue across all city sites — ${trafficRangeLabel(trafficRange)}`}
           action={
             <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 text-xs">
-              {["7d", "30d", "90d"].map((p, i) => (
-                <button key={p} className={`px-2.5 py-1 rounded ${i === 1 ? "bg-muted font-semibold" : "text-muted-foreground"}`}>{p}</button>
+              {TRAFFIC_RANGES.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setTrafficRange(p)}
+                  className={`px-2.5 py-1 rounded transition ${
+                    trafficRange === p
+                      ? "bg-muted font-semibold text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  {p}
+                </button>
               ))}
             </div>
           }
@@ -71,7 +128,17 @@ function Dashboard() {
           </div>
         </SectionCard>
 
-        <SectionCard title="AI Pipeline" description="Live job throughput" action={<Badge tone="success">Healthy</Badge>}>
+        <SectionCard
+          title="AI Pipeline"
+          description={live ? "Live job throughput" : "Demo job throughput"}
+          action={
+            <Link to="/ai-pipeline">
+              <Badge tone={pipelineHealthy ? "success" : "warning"}>
+                {pipelineHealthy ? "Healthy" : "View status"}
+              </Badge>
+            </Link>
+          }
+        >
           <ul className="space-y-3">
             {pipelineStages.map((s, i) => (
               <li key={s.name}>
@@ -89,7 +156,7 @@ function Dashboard() {
             ))}
           </ul>
           <div className="mt-4 pt-4 border-t border-border grid grid-cols-3 gap-2">
-            {sourcePlatforms.slice(0, 6).map((p) => (
+            {sourcePlatformsChart.map((p) => (
               <div key={p.name} className="text-center">
                 <div className="text-[11px] text-muted-foreground">{p.name}</div>
                 <div className="text-sm font-semibold tabular-nums">{p.jobs}</div>
@@ -127,7 +194,8 @@ function Dashboard() {
                   <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/40 transition cursor-pointer">
                     <td className="py-2.5 px-5">
                       <Link to="/cities/$cityId" params={{ cityId: String(c.id) }} className="font-medium hover:text-primary">
-                        {c.name}<span className="text-muted-foreground font-normal ml-1">{c.state}</span>
+                        {c.name}
+                        <span className="text-muted-foreground font-normal ml-1">{formatStateName(c.state)}</span>
                       </Link>
                     </td>
                     <td className="text-right tabular-nums px-3">{c.articles}</td>
@@ -144,8 +212,16 @@ function Dashboard() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Trending Content" description="Top performing across the network">
+        <SectionCard title="Trending Content" description={live ? "Live stories by engagement" : "Top performing across the network"}>
           <ul className="space-y-3">
+            {articlesLoading && live && (
+              <li className="text-sm text-muted-foreground py-6 text-center">Fetching live local news…</li>
+            )}
+            {!articlesLoading && top.length === 0 && live && (
+              <li className="text-sm text-muted-foreground py-6 text-center">
+                No articles yet. Click &quot;Refresh live articles&quot; to pull city news.
+              </li>
+            )}
             {top.map((a) => (
               <li key={a.id} className="group p-3 -mx-2 rounded-lg hover:bg-muted/40 transition">
                 <div className="flex items-start gap-3">
@@ -160,14 +236,18 @@ function Dashboard() {
                         </Badge>
                       ))}
                     </div>
-                    <p className="mt-1.5 text-sm font-medium leading-snug line-clamp-2">{a.title}</p>
+                    <Link to="/articles/$articleId" params={{ articleId: String(a.id) }} className="mt-1.5 text-sm font-medium leading-snug line-clamp-2 block hover:text-primary">
+                      {a.title}
+                    </Link>
                     <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
                       <span>{a.city}</span>·<span>{a.source}</span>·<span>{a.category}</span>
                     </div>
                     <div className="mt-2 flex items-center gap-3 text-[11px]">
                       <span className="tabular-nums"><Eye className="inline h-3 w-3 mr-0.5" />{a.clicks.toLocaleString()}</span>
                       <span className="tabular-nums text-success">CTR {a.ctr}%</span>
-                      <span className="tabular-nums text-muted-foreground">AI {(a.aiConfidence * 100).toFixed(0)}%</span>
+                      <span className="tabular-nums text-muted-foreground" title="AI confidence score">
+                        Conf. {(a.aiConfidence * 100).toFixed(0)}%
+                      </span>
                     </div>
                   </div>
                   <button className="opacity-0 group-hover:opacity-100 transition text-[11px] font-medium text-primary inline-flex items-center gap-0.5 self-start">
@@ -182,16 +262,16 @@ function Dashboard() {
 
       {/* Bottom row: source mix + category */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <SectionCard title="Source Mix" description="Articles ingested by platform (last 7 days)">
+        <SectionCard title="Source Mix" description="Live sources only (Google News, Reddit, BBC)">
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sourcePlatforms} barSize={28}>
+              <BarChart data={sourcePlatformsChart} barSize={28}>
                 <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} axisLine={false} tickLine={false} width={32} />
                 <Tooltip contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }} />
                 <Bar dataKey="jobs" radius={[6, 6, 0, 0]}>
-                  {sourcePlatforms.map((_, i) => <Cell key={i} fill="var(--color-primary)" fillOpacity={0.4 + i * 0.1} />)}
+                  {sourcePlatformsChart.map((_, i) => <Cell key={i} fill="var(--color-primary)" fillOpacity={0.4 + i * 0.1} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

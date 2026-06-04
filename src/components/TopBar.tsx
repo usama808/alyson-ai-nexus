@@ -1,4 +1,5 @@
-import { Bell, Search, CircleDot } from "lucide-react";
+import { Search, CircleDot } from "lucide-react";
+import { NotificationsBell } from "@/components/NotificationsBell";
 
 export function TopBar({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
@@ -20,10 +21,7 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
           <CircleDot className="h-3 w-3 text-success animate-pulse" />
           <span className="text-xs font-medium">AI Online</span>
         </div>
-        <button className="h-9 w-9 rounded-md border border-border bg-card flex items-center justify-center hover:bg-muted transition relative">
-          <Bell className="h-4 w-4 text-muted-foreground" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 bg-destructive rounded-full" />
-        </button>
+        <NotificationsBell />
         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary to-chart-4 flex items-center justify-center text-primary-foreground text-xs font-semibold">
           AD
         </div>
